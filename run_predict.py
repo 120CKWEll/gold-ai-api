@@ -152,7 +152,9 @@ final_csv = pd.concat([results, df_future], ignore_index=True)
 
 final_csv['Date'] = final_csv['Date'].dt.strftime('%Y-%m-%d')
 
+import os
+os.makedirs('data', exist_ok=True)
 # บันทึกไฟล์ลงโฟลเดอร์ data
 file_name = "data/gold_prediction_final_dashboard.csv"
-final_csv.to_csv(file_name, index=False)
+# final_csv.to_csv(file_name, index=False)
 print(f"\nSaved file '{file_name}' successfully!")
