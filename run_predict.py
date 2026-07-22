@@ -166,9 +166,10 @@ def generate_forecast():
         current_features['MA_5'] = (current_features['MA_5'] * 4 + pred_real) / 5
         current_close = pred_real
 
+   # 🟢 1. เปลี่ยนจาก [np.nan] เป็น [None] ในอนาคต 5 วัน
     df_future = pd.DataFrame({
         'Date': future_dates,
-        'Close': [np.nan] * 5,
+        'Close': [None] * 5, 
         'Predicted': future_preds
     })
 
@@ -177,5 +178,8 @@ def generate_forecast():
     final_csv = pd.concat([results, df_future], ignore_index=True)
 
     final_csv['Date'] = final_csv['Date'].dt.strftime('%Y-%m-%d')
+
+    # 🟢 2. เพิ่มบรรทัดนี้เพื่อกวาดล้าง NaN ที่อาจหลงเหลืออยู่ให้เป็น None ให้หมด
+    final_csv = final_csv.replace({np.nan: None})
 
     return final_csv.to_dict(orient='records')
