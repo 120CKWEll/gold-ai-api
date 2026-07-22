@@ -166,7 +166,6 @@ def generate_forecast():
         current_features['MA_5'] = (current_features['MA_5'] * 4 + pred_real) / 5
         current_close = pred_real
 
-   # 🟢 1. เปลี่ยนจาก [np.nan] เป็น [None] ในอนาคต 5 วัน
     df_future = pd.DataFrame({
         'Date': future_dates,
         'Close': [None] * 5, 
