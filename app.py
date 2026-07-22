@@ -1,8 +1,10 @@
 from flask import Flask, jsonify
+from flask_cors import CORS  # 🟢 อิมพอร์ตไลบรารี CORS
 import run_predict
 import traceback
 
 app = Flask(__name__)
+CORS(app)  # 🟢 เปิดใช้งาน CORS เพื่ออนุญาตให้ Vercel ดึงข้อมูลได้
 
 @app.route('/', methods=['GET'])
 def home():
@@ -14,7 +16,6 @@ def get_prediction():
         results = run_predict.generate_forecast() 
         return jsonify(results)
     except Exception as e:
-        # พิมพ์ Error ลงใน Render Log ให้เห็นชัดเจน
         print("Error during prediction:", str(e))
         print(traceback.format_exc())
         return jsonify({"status": "error", "message": str(e)}), 500
