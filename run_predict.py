@@ -71,6 +71,11 @@ def generate_forecast():
     except Exception:
         df_cpi = pd.DataFrame({'CPI': [310.0] * len(df_gold)}, index=df_gold.index)
 
+    # 🟢 เพิ่ม 3 บรรทัดนี้ตรงนี้ครับ เพื่อลบ Timezone ออกก่อน
+    df_gold.index = df_gold.index.tz_localize(None)
+    df_dxy.index = df_dxy.index.tz_localize(None)
+    df_cpi.index = df_cpi.index.tz_localize(None)
+
     # รวมตาราง
     df = df_gold.join([df_dxy, df_cpi], how='left').ffill().bfill().reset_index()
     
