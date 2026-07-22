@@ -19,24 +19,34 @@ def generate_forecast():
     start_date = "2022-01-01"
     split_ratio = 0.80 
 
-    df_gold = yf.download(symbol, start=start_date, auto_adjust=True)
-    if isinstance(df_gold.columns, pd.MultiIndex):
-        df_gold.columns = df_gold.columns.get_level_values(0)
+    # 🟢 เปลี่ยนมาใช้ Ticker().history เลี่ยงการโดน Render บล็อก IP
+    gold_ticker = yf.Ticker(symbol)
+    df_gold = gold_ticker.history(start=start_date)
+
+    if df_gold.empty:
+        raise ValueError("Cannot fetch Gold data from Yahoo Finance (Data is empty).")
+
     df_gold = df_gold[["Open", "High", "Low", "Close", "Volume"]].copy()
-    df_gold.index.name = 'Date' # บังคับตั้งชื่อ Index ให้เป็น Date ป้องกัน Error
+    df_gold.index.name = 'Date'
 
-    df_dxy = yf.download("DX-Y.NYB", start=start_date, auto_adjust=True)[['Close']].rename(columns={'Close': 'DXY'})
-    if isinstance(df_dxy.columns, pd.MultiIndex):
-        df_dxy.columns = df_dxy.columns.get_level_values(0)
+    # ดึงข้อมูล DXY
+    dxy_ticker = yf.Ticker("DX-Y.NYB")
+    df_dxy = dxy_ticker.history(start=start_date)[['Close']].rename(columns={'Close': 'DXY'})
 
+    # ดึงข้อมูล CPI (ใส่ try-except เผื่อเซิร์ฟเวอร์ FRED มีปัญหา)
     end_date = datetime.today().strftime('%Y-%m-%d')
-    df_cpi = web.DataReader('CPIAUCSL', 'fred', start_date, end_date)
-    df_cpi.index.name = 'Date'
-    df_cpi = df_cpi.rename(columns={'CPIAUCSL': 'CPI'})
+    try:
+        df_cpi = web.DataReader('CPIAUCSL', 'fred', start_date, end_date)
+        df_cpi.index.name = 'Date'
+        df_cpi = df_cpi.rename(columns={'CPIAUCSL': 'CPI'})
+    except Exception as e:
+        print(f"CPI Fetch Warning: {e}")
+        df_cpi = pd.DataFrame({'CPI': [300.0]}, index=pd.date_range(start_date, periods=1, freq='D'))
+        df_cpi.index.name = 'Date'
 
+    # รวมตาราง
     df = df_gold.join([df_dxy, df_cpi], how='left').ffill().bfill().reset_index()
     
-    # เช็กเผื่อกรณี yfinance หรือ reset_index ทำชื่อคอลัมน์เพี้ยน
     if 'index' in df.columns and 'Date' not in df.columns:
         df = df.rename(columns={'index': 'Date'})
 
@@ -135,5 +145,4 @@ def generate_forecast():
 
     final_csv['Date'] = final_csv['Date'].dt.strftime('%Y-%m-%d')
 
-    # แปลงข้อมูลให้อยู่ในรูปแบบ Dictionary (JSON) เพื่อให้ Flask ส่งกลับไปที่ Next.js
     return final_csv.to_dict(orient='records')
