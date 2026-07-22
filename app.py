@@ -1,10 +1,10 @@
 from flask import Flask, jsonify
-from flask_cors import CORS  # 🟢 อิมพอร์ตไลบรารี CORS
+from flask_cors import cors  # 🟢 อิมพอร์ตไลบรารี CORS
 import run_predict
 import traceback
 
 app = Flask(__name__)
-CORS(app)  # 🟢 เปิดใช้งาน CORS เพื่ออนุญาตให้ Vercel ดึงข้อมูลได้
+cors(app)  # 🟢 เปิดใช้งาน CORS เพื่ออนุญาตให้ Vercel ดึงข้อมูลได้
 
 @app.route('/', methods=['GET'])
 def home():
