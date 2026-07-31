@@ -1,10 +1,11 @@
+import os
 from flask import Flask, jsonify
-from flask_cors import CORS  # 🟢 เปลี่ยนเป็นตัวพิมพ์ใหญ่ CORS ตรงนี้
+from flask_cors import CORS
 import run_predict
 import traceback
 
 app = Flask(__name__)
-CORS(app)  # 🟢 เปลี่ยนเป็นตัวพิมพ์ใหญ่ CORS ตรงนี้
+CORS(app)
 
 @app.route('/', methods=['GET'])
 def home():
@@ -21,4 +22,6 @@ def get_prediction():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # 🟢 ดึงค่า Port จากระบบของ Render ถ้าไม่มีให้ใช้ 5000 แทน
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
