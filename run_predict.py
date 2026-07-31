@@ -7,11 +7,11 @@ import pandas_datareader.data as web
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 import warnings
-import requests  # 🟢 เปลี่ยนมาใช้ requests ธรรมดา
+import requests 
 
 warnings.filterwarnings('ignore')
 
-# 🟢 สร้าง Session ธรรมดาเพื่อปลอมตัวเป็น Chrome (เอา Cache ออกตามที่ yfinance บังคับ)
+# สร้าง Session ธรรมดาเพื่อปลอมตัวเป็น Chrome
 session = requests.Session()
 session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
@@ -26,34 +26,33 @@ def generate_forecast():
     # ดึงข้อมูลราคาทอง (มีระบบป้องกัน Yahoo บล็อก IP Cloud)
     # ----------------------------------------------------
     df_gold = pd.DataFrame()
-    # จุดที่ 1
+    
     try:
         gold_ticker = yf.Ticker(symbol, session=session)
-        df_gold = gold_ticker.history(period="1y") # 🟢 แก้เป็น 1y
+        df_gold = gold_ticker.history(period="1y") 
     except Exception as e:
         print(f"yfinance Ticker error: {e}")
 
-    # จุดที่ 2
     if df_gold.empty:
         try:
-            df_gold = yf.download(symbol, period="1y", auto_adjust=True, session=session) # 🟢 แก้เป็น 1y
+            df_gold = yf.download(symbol, period="1y", auto_adjust=True, session=session) 
             if isinstance(df_gold.columns, pd.MultiIndex):
                 df_gold.columns = df_gold.columns.get_level_values(0)
         except Exception as e:
             print(f"yfinance download error: {e}")
 
-    # 🔴 หากโดน Render บล็อก IP 100% จนข้อมูลว่างเปล่า ให้สร้างข้อมูลจำลองเพื่อป้องกัน API พัง
+    # หากโดน Render บล็อก IP 100% จนข้อมูลว่างเปล่า ให้สร้างข้อมูลจำลองเพื่อป้องกัน API พัง
     if df_gold.empty:
         print("⚠️ Yahoo Finance blocked Render IP. Generating fallback data for continuous service...")
-        dates = pd.bdate_range(end=datetime.today(), periods=500)
+        dates = pd.bdate_range(end=datetime.today(), periods=250) # ลดเหลือ 250 วัน (1 ปี) ให้สอดคล้องกัน
         np.random.seed(42)
-        base_price = 2300 + np.cumsum(np.random.randn(500) * 15)
+        base_price = 2300 + np.cumsum(np.random.randn(250) * 15)
         df_gold = pd.DataFrame({
             'Open': base_price - 5,
             'High': base_price + 10,
             'Low': base_price - 10,
             'Close': base_price,
-            'Volume': np.random.randint(10000, 50000, size=500)
+            'Volume': np.random.randint(10000, 50000, size=250)
         }, index=dates)
 
     df_gold = df_gold[["Open", "High", "Low", "Close", "Volume"]].copy()
@@ -62,9 +61,9 @@ def generate_forecast():
     # ----------------------------------------------------
     # ดึงข้อมูล DXY & CPI
     # ----------------------------------------------------
-   try:
+    try: # 🟢 แก้ไขการเว้นวรรคตรงนี้ให้ถูกต้องแล้ว
         dxy_ticker = yf.Ticker("DX-Y.NYB", session=session)
-        df_dxy = dxy_ticker.history(period="1y")[['Close']].rename(columns={'Close': 'DXY'}) # 🟢 แก้เป็น 1y
+        df_dxy = dxy_ticker.history(period="1y")[['Close']].rename(columns={'Close': 'DXY'}) 
         if df_dxy.empty:
             raise Exception("DXY empty")
     except Exception:
@@ -80,10 +79,13 @@ def generate_forecast():
     except Exception:
         df_cpi = pd.DataFrame({'CPI': [310.0] * len(df_gold)}, index=df_gold.index)
 
-    # 🟢 เพิ่ม 3 บรรทัดนี้ตรงนี้ครับ เพื่อลบ Timezone ออกก่อน
-    df_gold.index = df_gold.index.tz_localize(None)
-    df_dxy.index = df_dxy.index.tz_localize(None)
-    df_cpi.index = df_cpi.index.tz_localize(None)
+    # 🟢 แก้ไขการลบ Timezone ให้ปลอดภัย (เช็คก่อนว่ามี Timezone หรือไม่)
+    if df_gold.index.tz is not None:
+        df_gold.index = df_gold.index.tz_localize(None)
+    if df_dxy.index.tz is not None:
+        df_dxy.index = df_dxy.index.tz_localize(None)
+    if df_cpi.index.tz is not None:
+        df_cpi.index = df_cpi.index.tz_localize(None)
 
     # รวมตาราง
     df = df_gold.join([df_dxy, df_cpi], how='left').ffill().bfill().reset_index()
@@ -137,15 +139,14 @@ def generate_forecast():
 
     y_train = df_train['Target_Delta'].values
 
-    # 🟢 ปรับลด Layer และ max_iter ให้เหมาะกับ Render Free Tier (ประมวลผลเร็วขึ้น 10 เท่า)
     mlp_model = MLPRegressor(
-        hidden_layer_sizes=(64, 32), # ลดขนาดจาก (256, 128, 64)
+        hidden_layer_sizes=(64, 32), 
         activation='relu',
         solver='adam',
         alpha=0.01,
         batch_size=32,
         learning_rate='adaptive',
-        max_iter=300,                # ลดจาก 2000 เพื่อไม่ให้ Timeout
+        max_iter=300,                
         early_stopping=True,
         random_state=42
     )
@@ -186,8 +187,6 @@ def generate_forecast():
     final_csv = pd.concat([results, df_future], ignore_index=True)
 
     final_csv['Date'] = final_csv['Date'].dt.strftime('%Y-%m-%d')
-
-    # 🟢 2. เพิ่มบรรทัดนี้เพื่อกวาดล้าง NaN ที่อาจหลงเหลืออยู่ให้เป็น None ให้หมด
     final_csv = final_csv.replace({np.nan: None})
 
     return final_csv.to_dict(orient='records')
