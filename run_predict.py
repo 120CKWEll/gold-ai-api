@@ -7,14 +7,12 @@ import pandas_datareader.data as web
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 import warnings
-
-# 🟢 1. Import requests_cache เข้ามา
-import requests_cache 
+import requests  # 🟢 เปลี่ยนมาใช้ requests ธรรมดา
 
 warnings.filterwarnings('ignore')
 
-# 🟢 2. สร้าง Session และปลอมตัวเป็น Google Chrome (วางไว้นอกฟังก์ชันเพื่อให้จำค่าได้)
-session = requests_cache.CachedSession('yfinance_cache', expire_after=3600)
+# 🟢 สร้าง Session ธรรมดาเพื่อปลอมตัวเป็น Chrome (เอา Cache ออกตามที่ yfinance บังคับ)
+session = requests.Session()
 session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
 })
@@ -28,18 +26,17 @@ def generate_forecast():
     # ดึงข้อมูลราคาทอง (มีระบบป้องกัน Yahoo บล็อก IP Cloud)
     # ----------------------------------------------------
     df_gold = pd.DataFrame()
+    # จุดที่ 1
     try:
-        # 🟢 3. แนบ session=session เข้าไปใน Ticker
         gold_ticker = yf.Ticker(symbol, session=session)
-        df_gold = gold_ticker.history(period="2y")
+        df_gold = gold_ticker.history(period="1y") # 🟢 แก้เป็น 1y
     except Exception as e:
         print(f"yfinance Ticker error: {e}")
 
-    # ถ้า Ticker ไม่ได้ ให้ลอง yf.download
+    # จุดที่ 2
     if df_gold.empty:
         try:
-            # 🟢 4. แนบ session=session เข้าไปใน yf.download ด้วย
-            df_gold = yf.download(symbol, period="2y", auto_adjust=True, session=session)
+            df_gold = yf.download(symbol, period="1y", auto_adjust=True, session=session) # 🟢 แก้เป็น 1y
             if isinstance(df_gold.columns, pd.MultiIndex):
                 df_gold.columns = df_gold.columns.get_level_values(0)
         except Exception as e:
@@ -65,10 +62,9 @@ def generate_forecast():
     # ----------------------------------------------------
     # ดึงข้อมูล DXY & CPI
     # ----------------------------------------------------
-    try:
-        # 🟢 5. แนบ session=session ตอนดึงข้อมูล DXY ด้วย
+   try:
         dxy_ticker = yf.Ticker("DX-Y.NYB", session=session)
-        df_dxy = dxy_ticker.history(period="2y")[['Close']].rename(columns={'Close': 'DXY'})
+        df_dxy = dxy_ticker.history(period="1y")[['Close']].rename(columns={'Close': 'DXY'}) # 🟢 แก้เป็น 1y
         if df_dxy.empty:
             raise Exception("DXY empty")
     except Exception:
