@@ -61,7 +61,7 @@ def generate_forecast():
     # ----------------------------------------------------
     # ดึงข้อมูล DXY & CPI
     # ----------------------------------------------------
-    try: # 🟢 แก้ไขการเว้นวรรคตรงนี้ให้ถูกต้องแล้ว
+    try: 
         dxy_ticker = yf.Ticker("DX-Y.NYB", session=session)
         df_dxy = dxy_ticker.history(period="1y")[['Close']].rename(columns={'Close': 'DXY'}) 
         if df_dxy.empty:
@@ -79,7 +79,7 @@ def generate_forecast():
     except Exception:
         df_cpi = pd.DataFrame({'CPI': [310.0] * len(df_gold)}, index=df_gold.index)
 
-    # 🟢 แก้ไขการลบ Timezone ให้ปลอดภัย (เช็คก่อนว่ามี Timezone หรือไม่)
+    # แก้ไขการลบ Timezone ให้ปลอดภัย (เช็คก่อนว่ามี Timezone หรือไม่)
     if df_gold.index.tz is not None:
         df_gold.index = df_gold.index.tz_localize(None)
     if df_dxy.index.tz is not None:
@@ -127,7 +127,7 @@ def generate_forecast():
 
     train_size = int(len(df) * split_ratio)
     df_train = df.iloc[:train_size].copy()
-    df_test = df.iloc[train_size:].copy()
+    # (เรายังแบ่ง df_test ไว้สำหรับคำนวณ Error ได้ในอนาคต แต่ตอนทำนายผลเราจะใช้ df ตัวเต็ม)
 
     # ==========================================
     # 2. เทรนโมเดล MLP
@@ -135,8 +135,7 @@ def generate_forecast():
     print("2. Training MLP model...")
     scaler_X = StandardScaler()
     X_train_scaled = scaler_X.fit_transform(df_train[feature_cols])
-    X_test_scaled = scaler_X.transform(df_test[feature_cols])
-
+    
     y_train = df_train['Target_Delta'].values
 
     mlp_model = MLPRegressor(
@@ -152,8 +151,10 @@ def generate_forecast():
     )
     mlp_model.fit(X_train_scaled, y_train)
 
-    y_pred_delta = mlp_model.predict(X_test_scaled)
-    y_pred_real_price = df_test['Close_lag_1'].values + y_pred_delta
+    # 🟢 ทำนายผลข้อมูล "ทั้งหมด" (เพื่อให้ช่อง Predicted ในตารางมีข้อมูลครบทุกวัน)
+    X_all_scaled = scaler_X.transform(df[feature_cols])
+    y_pred_all_delta = mlp_model.predict(X_all_scaled)
+    y_pred_all_real_price = df['Close_lag_1'].values + y_pred_all_delta
 
     # ==========================================
     # 3. พยากรณ์ล่วงหน้า 5 วัน (Forecast)
@@ -170,7 +171,7 @@ def generate_forecast():
         curr_X = scaler_X.transform(current_features.values.reshape(1, -1))
         pred_delta = mlp_model.predict(curr_X)[0]
         pred_real = current_close + pred_delta
-        future_preds.append(pred_real)
+        future_preds.append(round(pred_real, 2))
 
         current_features['Close_lag_1'] = pred_real
         current_features['MA_5'] = (current_features['MA_5'] * 4 + pred_real) / 5
@@ -182,8 +183,10 @@ def generate_forecast():
         'Predicted': future_preds
     })
 
-    results = df_test[['Date', 'Close']].copy()
-    results['Predicted'] = y_pred_real_price
+    # 🟢 ใช้ข้อมูล df ตัวเต็มมาสร้างผลลัพธ์
+    results = df[['Date', 'Close']].copy()
+    results['Predicted'] = np.round(y_pred_all_real_price, 2)
+    
     final_csv = pd.concat([results, df_future], ignore_index=True)
 
     final_csv['Date'] = final_csv['Date'].dt.strftime('%Y-%m-%d')
