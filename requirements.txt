@@ -53,4 +53,4 @@ yfinance==1.5.1
 gunicorn==21.2.0
 pandas_datareader==0.11.1
 requests-cache==1.1.1
-supabase==2.3.0
+supabase
