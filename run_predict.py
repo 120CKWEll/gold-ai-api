@@ -9,6 +9,10 @@ from sklearn.neural_network import MLPRegressor
 import warnings
 import requests 
 
+# 🟢 1. นำเข้าไลบรารีสำหรับ Supabase และ os สำหรับดึง Environment Variables
+import os
+from supabase import create_client, Client
+
 warnings.filterwarnings('ignore')
 
 # สร้าง Session ธรรมดาเพื่อปลอมตัวเป็น Chrome
@@ -44,7 +48,7 @@ def generate_forecast():
     # หากโดน Render บล็อก IP 100% จนข้อมูลว่างเปล่า ให้สร้างข้อมูลจำลองเพื่อป้องกัน API พัง
     if df_gold.empty:
         print("⚠️ Yahoo Finance blocked Render IP. Generating fallback data for continuous service...")
-        dates = pd.bdate_range(end=datetime.today(), periods=250) # ลดเหลือ 250 วัน (1 ปี) ให้สอดคล้องกัน
+        dates = pd.bdate_range(end=datetime.today(), periods=250) 
         np.random.seed(42)
         base_price = 2300 + np.cumsum(np.random.randn(250) * 15)
         df_gold = pd.DataFrame({
@@ -79,7 +83,7 @@ def generate_forecast():
     except Exception:
         df_cpi = pd.DataFrame({'CPI': [310.0] * len(df_gold)}, index=df_gold.index)
 
-    # แก้ไขการลบ Timezone ให้ปลอดภัย (เช็คก่อนว่ามี Timezone หรือไม่)
+    # แก้ไขการลบ Timezone ให้ปลอดภัย
     if df_gold.index.tz is not None:
         df_gold.index = df_gold.index.tz_localize(None)
     if df_dxy.index.tz is not None:
@@ -119,6 +123,35 @@ def generate_forecast():
 
     df = df.dropna().reset_index(drop=True)
 
+    # ==========================================
+    # 🟢 2. เพิ่มโค้ดบันทึกข้อมูลลง Supabase ตรงนี้ (ก่อนเทรนโมเดล)
+    # ==========================================
+    print("Saving fresh data to Supabase...")
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_KEY")
+    
+    if supabase_url and supabase_key:
+        supabase: Client = create_client(supabase_url, supabase_key)
+        records_to_save = []
+        
+        for index, row in df.iterrows():
+            records_to_save.append({
+                "date": row['Date'].strftime('%Y-%m-%d'),
+                "open": round(float(row['Open']), 2),
+                "high": round(float(row['High']), 2),
+                "low": round(float(row['Low']), 2),
+                "close": round(float(row['Close']), 2)
+            })
+            
+        try:
+            # upsert จะเพิ่มข้อมูลใหม่ และอัปเดตข้อมูลเดิมถ้าวันที่ซ้ำกัน
+            supabase.table('gold_prices').upsert(records_to_save, on_conflict='date').execute()
+            print("✅ Successfully updated Supabase database!")
+        except Exception as e:
+            print(f"❌ Error saving to Supabase: {e}")
+    else:
+        print("⚠️ Missing Supabase credentials. Skipping database update.")
+
     feature_cols = [
         'Open', 'High', 'Low', 'Volume', 'Close_lag_1', 'Close_lag_3',
         'MA_5', 'MA_10', 'Return', 'RSI_14', 'MACD', 'MACD_Signal',
@@ -127,10 +160,9 @@ def generate_forecast():
 
     train_size = int(len(df) * split_ratio)
     df_train = df.iloc[:train_size].copy()
-    # (เรายังแบ่ง df_test ไว้สำหรับคำนวณ Error ได้ในอนาคต แต่ตอนทำนายผลเราจะใช้ df ตัวเต็ม)
 
     # ==========================================
-    # 2. เทรนโมเดล MLP
+    # 3. เทรนโมเดล MLP
     # ==========================================
     print("2. Training MLP model...")
     scaler_X = StandardScaler()
@@ -151,13 +183,12 @@ def generate_forecast():
     )
     mlp_model.fit(X_train_scaled, y_train)
 
-    # 🟢 ทำนายผลข้อมูล "ทั้งหมด" (เพื่อให้ช่อง Predicted ในตารางมีข้อมูลครบทุกวัน)
     X_all_scaled = scaler_X.transform(df[feature_cols])
     y_pred_all_delta = mlp_model.predict(X_all_scaled)
     y_pred_all_real_price = df['Close_lag_1'].values + y_pred_all_delta
 
     # ==========================================
-    # 3. พยากรณ์ล่วงหน้า 5 วัน (Forecast)
+    # 4. พยากรณ์ล่วงหน้า 5 วัน (Forecast)
     # ==========================================
     print("3. Forecasting next 5 days...")
     last_row = df.iloc[-1].copy()
@@ -183,7 +214,6 @@ def generate_forecast():
         'Predicted': future_preds
     })
 
-    # 🟢 ใช้ข้อมูล df ตัวเต็มมาสร้างผลลัพธ์
     results = df[['Date', 'Close']].copy()
     results['Predicted'] = np.round(y_pred_all_real_price, 2)
     
